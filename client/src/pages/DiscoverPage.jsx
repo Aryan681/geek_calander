@@ -40,7 +40,7 @@ export function DiscoverPage() {
     <>
       <Header onSearch={() => {}} onMenu={() => setMenu(true)} />
       <MobileMenu open={menu} onClose={() => setMenu(false)} />
-      <main className="simple-page">
+      <main className="simple-page discover-page">
         <p className="eyebrow">/ release radar · next 90 days</p>
         <h1>Find your next obsession.</h1>
         <p className="lede">

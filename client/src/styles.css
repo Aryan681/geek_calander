@@ -501,6 +501,10 @@ nav a:hover {
   max-width: 780px;
   padding: clamp(70px, 12vw, 170px) clamp(18px, 8vw, 130px);
 }
+.discover-page {
+  max-width: 1440px;
+  margin: auto;
+}
 .inline-button {
   display: inline-block;
   text-decoration: none;

@@ -184,7 +184,7 @@ describe('TMDB Provider Tests', () => {
       const gte = new Date(capturedParams['primary_release_date.gte']);
       const lte = new Date(capturedParams['primary_release_date.lte']);
       const diffDays = Math.round((lte.getTime() - gte.getTime()) / (1000 * 60 * 60 * 24));
-      assert.equal(diffDays >= 89 && diffDays <= 91, true); // 90 day future window
+      assert.equal(diffDays >= 359 && diffDays <= 361, true); // 180 day past-to-future window
     });
 
     it('normalizes multiple movies from a mocked discover response in a single HTTP call', async () => {
@@ -211,6 +211,38 @@ describe('TMDB Provider Tests', () => {
       assert.equal(events.length, 2);
       assert.equal(events[0].title, '[Movie] Movie One');
       assert.equal(events[1].title, '[Movie] Movie Two');
+    });
+
+    it('collects movies across bounded pages and deduplicates page overlap', async () => {
+      let calls = 0;
+      const mockClient = {
+        get: async (_url, config) => {
+          calls++;
+          const page = config.params.page;
+          return {
+            data: {
+              page,
+              total_pages: 2,
+              results: page === 1
+                ? [
+                    { id: 1, title: 'Movie One', release_date: '2026-10-10' },
+                    { id: 2, title: 'Movie Two', release_date: '2026-10-11' },
+                  ]
+                : [
+                    { id: 2, title: 'Movie Two Updated', release_date: '2026-10-11' },
+                    { id: 3, title: 'Movie Three', release_date: '2026-10-12' },
+                  ],
+            },
+          };
+        },
+      };
+
+      const events = await fetchUpcomingMovies({ client: mockClient, targetEvents: 3, maxPages: 3 });
+
+      assert.equal(calls, 2);
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.externalId), ['1', '2', '3']);
+      assert.equal(events.find((event) => event.externalId === '2').title, '[Movie] Movie Two Updated');
     });
 
     it('handles network / API failure gracefully', async () => {

@@ -18,8 +18,14 @@ const SOURCE_DISPLAY_NAMES = Object.freeze({
 });
 
 const CALENDAR_WINDOW = Object.freeze({
-  PAST_DAYS: 30,
-  FUTURE_DAYS: 90,
+  PAST_DAYS: 180,
+  FUTURE_DAYS: 180,
+});
+
+const INGESTION = Object.freeze({
+  TARGET_EVENTS_PER_PROVIDER: 100,
+  MAX_PAGES_PER_PROVIDER: 5,
+  PAGE_SIZE: 50,
 });
 
 const CACHE = Object.freeze({
@@ -44,6 +50,7 @@ module.exports = {
   CATEGORIES,
   SOURCE_DISPLAY_NAMES,
   CALENDAR_WINDOW,
+  INGESTION,
   CACHE,
   IGDB_REGIONS,
 };

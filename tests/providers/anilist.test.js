@@ -183,6 +183,36 @@ describe('AniList Provider Tests', () => {
       assert.equal(events[0].category, 'anime');
     });
 
+    it('collects valid anime events across bounded pages and deduplicates page overlap', async () => {
+      let calls = 0;
+      const makeSchedule = (id) => ({
+        id,
+        airingAt: 1774000000 + id,
+        episode: id,
+        media: { id: id, title: { english: `Show ${id}` } },
+      });
+      const mockClient = {
+        post: async (_url, body) => {
+          calls++;
+          const page = body.variables.page;
+          return {
+            data: { data: { Page: {
+              pageInfo: { hasNextPage: page < 2, currentPage: page },
+              airingSchedules: page === 1
+                ? [makeSchedule(1), makeSchedule(2)]
+                : [makeSchedule(2), makeSchedule(3)],
+            } } },
+          };
+        },
+      };
+
+      const events = await fetchUpcomingAnime({ client: mockClient, targetEvents: 3, maxPages: 3 });
+
+      assert.equal(calls, 2);
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.externalId), ['1', '2', '3']);
+    });
+
     it('handles AniList GraphQL errors gracefully by throwing descriptive error', async () => {
       const mockClient = {
         post: async () => ({

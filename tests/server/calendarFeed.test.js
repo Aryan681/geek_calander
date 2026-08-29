@@ -179,15 +179,19 @@ describe('Calendar Feed & Express Server Tests', () => {
   });
 
   describe('Calendar Window Calculation & Service Delegation', () => {
-    it('correctly calculates the rolling past 30 days and future 90 days window', () => {
+    it('correctly calculates the rolling past 180 days and future 180 days window', () => {
       const refDate = new Date('2026-06-01T00:00:00.000Z');
       const { startDate, endDate } = getCalendarWindow(refDate);
 
       const diffPastDays = Math.round((refDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
       const diffFutureDays = Math.round((endDate.getTime() - refDate.getTime()) / (24 * 60 * 60 * 1000));
 
-      assert.equal(diffPastDays, 30);
-      assert.equal(diffFutureDays, 90);
+      assert.equal(diffPastDays, 180);
+      assert.equal(diffFutureDays, 180);
+
+      const boundaryWindow = getCalendarWindow(refDate);
+      assert.equal(boundaryWindow.startDate.toISOString(), '2025-12-03T00:00:00.000Z');
+      assert.equal(boundaryWindow.endDate.toISOString(), '2026-11-28T00:00:00.000Z');
     });
 
     it('delegates to repository window query and returns formatted ICS', async () => {

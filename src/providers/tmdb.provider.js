@@ -7,6 +7,7 @@ const {
   resolveRegionalReleaseDate,
   normalizeMovie,
 } = require('../normalizers/tmdb.normalizer');
+const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -76,36 +77,58 @@ async function fetchUpcomingMovies({
   endDate,
   page = 1,
   region = 'IN',
+  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
+  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
   client = axios,
 } = {}) {
   const now = new Date();
-  const start = startDate || formatYMD(now);
-  const future = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const past = new Date(now.getTime() - CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60 * 1000);
+  const future = new Date(now.getTime() + CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60 * 1000);
+  const start = startDate || formatYMD(past);
   const end = endDate || formatYMD(future);
+  const moviesById = new Map();
 
-  const data = await fetchFromTMDB(
-    '/discover/movie',
-    {
-      page,
-      region,
-      'primary_release_date.gte': start,
-      'primary_release_date.lte': end,
-      sort_by: 'primary_release_date.asc',
-      include_adult: false,
-      include_video: false,
-    },
-    client
-  );
+  const countValidMovies = () => {
+    let count = 0;
+    for (const movie of moviesById.values()) {
+      try {
+        if (normalizeMovie(movie)) count++;
+      } catch (err) {
+        // Final normalization below logs malformed records once.
+      }
+    }
+    return count;
+  };
 
-  const results = data.results || [];
+  for (let currentPage = page; currentPage < page + maxPages; currentPage++) {
+    const data = await fetchFromTMDB(
+      '/discover/movie',
+      {
+        page: currentPage,
+        region,
+        'primary_release_date.gte': start,
+        'primary_release_date.lte': end,
+        sort_by: 'primary_release_date.asc',
+        include_adult: false,
+        include_video: false,
+      },
+      client
+    );
+
+    for (const movie of data.results || []) {
+      if (movie?.id) moviesById.set(String(movie.id), movie);
+    }
+
+    if (countValidMovies() >= targetEvents || currentPage >= (data.total_pages || currentPage) || !(data.results || []).length) {
+      break;
+    }
+  }
+
   const normalizedEvents = [];
-
-  for (const movie of results) {
+  for (const movie of moviesById.values()) {
     try {
       const event = normalizeMovie(movie);
-      if (event) {
-        normalizedEvents.push(event);
-      }
+      if (event) normalizedEvents.push(event);
     } catch (err) {
       logger.warn(`[TMDB] Skipping malformed movie item: ${err.message}`);
     }

@@ -7,6 +7,7 @@ const {
   normalizeAnimeAiringSchedule,
   normalizeMangaMedia,
 } = require('../normalizers/anilist.normalizer');
+const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
 
 const ANILIST_GRAPHQL_ENDPOINT = 'https://graphql.anilist.co';
 
@@ -101,31 +102,63 @@ async function fetchAniListGraphQL(query, variables = {}, client = axios) {
  * @param {Object} [options]
  * @returns {Promise<Array<Object>>}
  */
-async function fetchUpcomingAnime({ airingAtGreater, airingAtLesser, perPage = 50, client = axios } = {}) {
+async function fetchUpcomingAnime({
+  airingAtGreater,
+  airingAtLesser,
+  perPage = INGESTION.PAGE_SIZE,
+  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
+  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
+  client = axios,
+} = {}) {
   const nowInSeconds = Math.floor(Date.now() / 1000);
-  const startSec = airingAtGreater ?? nowInSeconds;
-  const endSec = airingAtLesser ?? (nowInSeconds + 14 * 24 * 60 * 60);
+  const defaultStart = nowInSeconds - CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60;
+  const defaultEnd = nowInSeconds + CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60;
+  const startSec = airingAtGreater ?? defaultStart;
+  const endSec = airingAtLesser ?? defaultEnd;
+  const schedulesById = new Map();
 
-  const data = await fetchAniListGraphQL(
-    AIRING_ANIME_QUERY,
-    {
-      page: 1,
-      perPage,
-      airingAtGreater: startSec,
-      airingAtLesser: endSec,
-    },
-    client
-  );
+  const countValidSchedules = () => {
+    let count = 0;
+    for (const item of schedulesById.values()) {
+      try {
+        if (normalizeAnimeAiringSchedule(item)) count++;
+      } catch (err) {
+        // Final normalization below logs malformed records once.
+      }
+    }
+    return count;
+  };
 
-  const schedules = data?.Page?.airingSchedules || [];
+  for (let page = 1; page <= maxPages; page++) {
+    const data = await fetchAniListGraphQL(
+      AIRING_ANIME_QUERY,
+      {
+        page,
+        perPage,
+        airingAtGreater: startSec,
+        airingAtLesser: endSec,
+      },
+      client
+    );
+
+    const pageData = data?.Page;
+    const schedules = pageData?.airingSchedules || [];
+    for (const item of schedules) {
+      const key = item?.id ? String(item.id) : `${item?.media?.id}:${item?.episode}:${item?.airingAt}`;
+      if (key !== 'undefined:undefined:undefined') schedulesById.set(key, item);
+    }
+
+    const pageInfo = pageData?.pageInfo;
+    if (countValidSchedules() >= targetEvents || !pageInfo?.hasNextPage || schedules.length === 0) {
+      break;
+    }
+  }
+
   const results = [];
-
-  for (const item of schedules) {
+  for (const item of schedulesById.values()) {
     try {
       const normalized = normalizeAnimeAiringSchedule(item);
-      if (normalized) {
-        results.push(normalized);
-      }
+      if (normalized) results.push(normalized);
     } catch (err) {
       logger.warn(`[AniList] Skipping malformed anime item: ${err.message}`);
     }

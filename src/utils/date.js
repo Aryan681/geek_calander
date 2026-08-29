@@ -74,7 +74,7 @@ function parseIGDBDate(timestampSec) {
 }
 
 /**
- * Calculates the active calendar event window: [now - 30 days, now + 90 days].
+ * Calculates the active calendar event window: [now - 180 days, now + 180 days].
  * @param {Date} [referenceDate] 
  * @returns {{ startDate: Date, endDate: Date }}
  */

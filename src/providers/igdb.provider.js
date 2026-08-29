@@ -5,6 +5,7 @@ const {
   formatCoverUrl,
   normalizeIGDBReleaseDates,
 } = require('../normalizers/igdb.normalizer');
+const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
 
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const IGDB_API_BASE_URL = 'https://api.igdb.com/v4';
@@ -135,20 +136,33 @@ async function fetchUpcomingGames({
   startDateSec,
   endDateSec,
   limit = 100,
+  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
+  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
   client = axios,
 } = {}) {
   const nowSec = Math.floor(Date.now() / 1000);
-  const start = startDateSec !== undefined ? startDateSec : nowSec;
-  const end = endDateSec !== undefined ? endDateSec : nowSec + (90 * 24 * 60 * 60);
+  const start = startDateSec !== undefined ? startDateSec : nowSec - (CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60);
+  const end = endDateSec !== undefined ? endDateSec : nowSec + (CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60);
+  const records = [];
 
-  const query = [
-    'fields id, date, human, platform.name, platform.abbreviation, region, game.id, game.name, game.summary, game.url, game.slug, game.cover.image_id, game.cover.url;',
-    `where date >= ${start} & date <= ${end} & game != null & game.name != null;`,
-    'sort date asc;',
-    `limit ${limit};`,
-  ].join(' ');
+  for (let page = 0; page < maxPages; page++) {
+    const offset = page * limit;
+    const query = [
+      'fields id, date, human, platform.name, platform.abbreviation, region, game.id, game.name, game.summary, game.url, game.slug, game.cover.image_id, game.cover.url;',
+      `where date >= ${start} & date <= ${end} & game != null & game.name != null;`,
+      'sort date asc;',
+      `limit ${limit};`,
+      `offset ${offset};`,
+    ].join(' ');
 
-  const records = await queryIGDB('/release_dates', query, { client });
+    const pageRecords = await queryIGDB('/release_dates', query, { client });
+    records.push(...pageRecords);
+
+    if (pageRecords.length < limit || normalizeIGDBReleaseDates(records).length >= targetEvents) {
+      break;
+    }
+  }
+
   return normalizeIGDBReleaseDates(records);
 }
 

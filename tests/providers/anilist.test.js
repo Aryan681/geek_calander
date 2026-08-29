@@ -183,7 +183,7 @@ describe('AniList Provider Tests', () => {
       assert.equal(events[0].category, 'anime');
     });
 
-    it('collects valid anime events across bounded pages and deduplicates page overlap', async () => {
+    it('collects every anime page beyond 100 records and deduplicates page overlap', async () => {
       let calls = 0;
       const makeSchedule = (id) => ({
         id,
@@ -197,20 +197,22 @@ describe('AniList Provider Tests', () => {
           const page = body.variables.page;
           return {
             data: { data: { Page: {
-              pageInfo: { hasNextPage: page < 2, currentPage: page },
+              pageInfo: { hasNextPage: page < 3, currentPage: page },
               airingSchedules: page === 1
-                ? [makeSchedule(1), makeSchedule(2)]
-                : [makeSchedule(2), makeSchedule(3)],
+                ? Array.from({ length: 50 }, (_, index) => makeSchedule(index + 1))
+                : page === 2
+                  ? Array.from({ length: 50 }, (_, index) => makeSchedule(index + 50))
+                  : Array.from({ length: 22 }, (_, index) => makeSchedule(index + 100)),
             } } },
           };
         },
       };
 
-      const events = await fetchUpcomingAnime({ client: mockClient, targetEvents: 3, maxPages: 3 });
+      const events = await fetchUpcomingAnime({ client: mockClient });
 
-      assert.equal(calls, 2);
-      assert.equal(events.length, 3);
-      assert.deepEqual(events.map((event) => event.externalId), ['1', '2', '3']);
+      assert.equal(calls, 3);
+      assert.equal(events.length, 121);
+      assert.equal(events.pages, 3);
     });
 
     it('handles AniList GraphQL errors gracefully by throwing descriptive error', async () => {
@@ -249,6 +251,7 @@ describe('AniList Provider Tests', () => {
           data: {
             data: {
               Page: {
+                pageInfo: { hasNextPage: false, currentPage: 1 },
                 airingSchedules: [
                   { id: null, airingAt: null }, // malformed item
                   {

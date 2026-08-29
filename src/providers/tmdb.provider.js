@@ -1,13 +1,13 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { formatYMD } = require('../utils/date');
 const { ExternalProviderError } = require('../utils/errors');
 const {
   TMDB_IMAGE_BASE,
   resolveRegionalReleaseDate,
   normalizeMovie,
 } = require('../normalizers/tmdb.normalizer');
-const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
+const { PAGINATION } = require('../config/constants');
+const { getCalendarWindow, getCalendarMonthWindows, formatYMD } = require('../utils/date');
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -77,63 +77,84 @@ async function fetchUpcomingMovies({
   endDate,
   page = 1,
   region = 'IN',
-  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
-  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
+  calendarWindow,
+  maxPages = Number.parseInt(process.env.PAGINATION_GUARD_MAX_PAGES, 10) || PAGINATION.EMERGENCY_MAX_PAGES,
+  pageConcurrency = PAGINATION.TMDB_PAGE_CONCURRENCY,
+  batchDelayMs = PAGINATION.TMDB_BATCH_DELAY_MS,
   client = axios,
 } = {}) {
+  const safeConcurrency = Math.max(1, Number.parseInt(pageConcurrency, 10) || 1);
   const now = new Date();
-  const past = new Date(now.getTime() - CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60 * 1000);
-  const future = new Date(now.getTime() + CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60 * 1000);
-  const start = startDate || formatYMD(past);
-  const end = endDate || formatYMD(future);
+  const defaultWindow = calendarWindow || getCalendarWindow(now);
+  const requestedStart = startDate ? new Date(`${startDate}T00:00:00.000Z`) : defaultWindow.startDate;
+  const requestedEnd = endDate ? new Date(`${endDate}T23:59:59.999Z`) : defaultWindow.endDate;
+  const monthWindows = getCalendarMonthWindows(requestedStart, requestedEnd);
   const moviesById = new Map();
+  let pages = 0;
 
-  const countValidMovies = () => {
-    let count = 0;
-    for (const movie of moviesById.values()) {
-      try {
-        if (normalizeMovie(movie)) count++;
-      } catch (err) {
-        // Final normalization below logs malformed records once.
+  for (const monthWindow of monthWindows) {
+    const start = formatYMD(monthWindow.startDate);
+    const end = formatYMD(monthWindow.endDate);
+    if (pages >= maxPages) {
+      logger.error(`[TMDB] Pagination safety guard triggered after ${maxPages} pages`);
+      throw new ExternalProviderError('TMDB', `Pagination safety guard triggered after ${maxPages} pages`);
+    }
+    const fetchPage = async (currentPage) => {
+      const data = await fetchFromTMDB(
+        '/discover/movie',
+        {
+          page: currentPage,
+          region,
+          'primary_release_date.gte': start,
+          'primary_release_date.lte': end,
+          sort_by: 'primary_release_date.asc',
+          include_adult: false,
+          include_video: false,
+        },
+        client
+      );
+      logger.info(`[TMDB] page=${currentPage} fetched=${(data.results || []).length} range=${start}..${end}`);
+      pages++;
+      for (const movie of data.results || []) {
+        if (movie?.id) moviesById.set(String(movie.id), movie);
       }
+      return data;
+    };
+
+    const firstPage = await fetchPage(page);
+    if (!Number.isInteger(firstPage.total_pages)) {
+      throw new ExternalProviderError('TMDB', `Malformed pagination metadata on page ${page}`);
     }
-    return count;
-  };
-
-  for (let currentPage = page; currentPage < page + maxPages; currentPage++) {
-    const data = await fetchFromTMDB(
-      '/discover/movie',
-      {
-        page: currentPage,
-        region,
-        'primary_release_date.gte': start,
-        'primary_release_date.lte': end,
-        sort_by: 'primary_release_date.asc',
-        include_adult: false,
-        include_video: false,
-      },
-      client
-    );
-
-    for (const movie of data.results || []) {
-      if (movie?.id) moviesById.set(String(movie.id), movie);
+    if (firstPage.total_pages > 500) {
+      throw new ExternalProviderError('TMDB', `Monthly partition exceeds TMDB page ceiling: ${firstPage.total_pages}`);
     }
 
-    if (countValidMovies() >= targetEvents || currentPage >= (data.total_pages || currentPage) || !(data.results || []).length) {
-      break;
+    for (let batchStart = page + 1; batchStart <= firstPage.total_pages; batchStart += safeConcurrency) {
+      const batchEnd = Math.min(batchStart + safeConcurrency - 1, firstPage.total_pages);
+      if (pages + (batchEnd - batchStart + 1) > maxPages) {
+        logger.error(`[TMDB] Pagination safety guard triggered after ${maxPages} pages`);
+        throw new ExternalProviderError('TMDB', `Pagination safety guard triggered after ${maxPages} pages`);
+      }
+      await Promise.all(Array.from({ length: batchEnd - batchStart + 1 }, (_, index) => fetchPage(batchStart + index)));
+      if (batchEnd < firstPage.total_pages && batchDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+      }
     }
   }
 
   const normalizedEvents = [];
+  const filterStart = calendarWindow?.startDate || requestedStart;
+  const filterEnd = calendarWindow?.endDate || requestedEnd;
   for (const movie of moviesById.values()) {
     try {
       const event = normalizeMovie(movie);
-      if (event) normalizedEvents.push(event);
+      if (event && event.releaseDate >= filterStart && event.releaseDate <= filterEnd) normalizedEvents.push(event);
     } catch (err) {
       logger.warn(`[TMDB] Skipping malformed movie item: ${err.message}`);
     }
   }
 
+  Object.defineProperty(normalizedEvents, 'pages', { value: pages, enumerable: false });
   return normalizedEvents;
 }
 

@@ -8,6 +8,7 @@ const {
   getCalendarWindow,
   getDynamicCalendarFeed,
 } = require('../../src/services/calendar.service');
+const { addCalendarMonths } = require('../../src/utils/date');
 
 describe('Calendar Feed & Express Server Tests', () => {
   let serverInstance;
@@ -179,19 +180,25 @@ describe('Calendar Feed & Express Server Tests', () => {
   });
 
   describe('Calendar Window Calculation & Service Delegation', () => {
-    it('correctly calculates the rolling past 180 days and future 180 days window', () => {
+    it('correctly calculates the rolling six-calendar-month window', () => {
       const refDate = new Date('2026-06-01T00:00:00.000Z');
       const { startDate, endDate } = getCalendarWindow(refDate);
 
       const diffPastDays = Math.round((refDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
       const diffFutureDays = Math.round((endDate.getTime() - refDate.getTime()) / (24 * 60 * 60 * 1000));
 
-      assert.equal(diffPastDays, 180);
-      assert.equal(diffFutureDays, 180);
+      assert.equal(diffPastDays, 182);
+      assert.equal(diffFutureDays, 183);
 
       const boundaryWindow = getCalendarWindow(refDate);
-      assert.equal(boundaryWindow.startDate.toISOString(), '2025-12-03T00:00:00.000Z');
-      assert.equal(boundaryWindow.endDate.toISOString(), '2026-11-28T00:00:00.000Z');
+      assert.equal(boundaryWindow.startDate.toISOString(), '2025-12-01T00:00:00.000Z');
+      assert.equal(boundaryWindow.endDate.toISOString(), '2026-12-01T00:00:00.000Z');
+    });
+
+    it('handles month lengths and leap years with calendar-month arithmetic', () => {
+      assert.equal(addCalendarMonths(new Date('2026-08-31T12:00:00.000Z'), -6).toISOString(), '2026-02-28T12:00:00.000Z');
+      assert.equal(addCalendarMonths(new Date('2024-08-31T12:00:00.000Z'), -6).toISOString(), '2024-02-29T12:00:00.000Z');
+      assert.equal(addCalendarMonths(new Date('2026-01-31T12:00:00.000Z'), 1).toISOString(), '2026-02-28T12:00:00.000Z');
     });
 
     it('delegates to repository window query and returns formatted ICS', async () => {

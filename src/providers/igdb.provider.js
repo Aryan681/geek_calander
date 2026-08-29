@@ -5,7 +5,9 @@ const {
   formatCoverUrl,
   normalizeIGDBReleaseDates,
 } = require('../normalizers/igdb.normalizer');
-const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
+const { PAGINATION } = require('../config/constants');
+const { getCalendarWindow } = require('../utils/date');
+const logger = require('../utils/logger');
 
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const IGDB_API_BASE_URL = 'https://api.igdb.com/v4';
@@ -136,16 +138,22 @@ async function fetchUpcomingGames({
   startDateSec,
   endDateSec,
   limit = 100,
-  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
-  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
+  calendarWindow,
+  maxPages = Number.parseInt(process.env.PAGINATION_GUARD_MAX_PAGES, 10) || PAGINATION.EMERGENCY_MAX_PAGES,
   client = axios,
 } = {}) {
   const nowSec = Math.floor(Date.now() / 1000);
-  const start = startDateSec !== undefined ? startDateSec : nowSec - (CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60);
-  const end = endDateSec !== undefined ? endDateSec : nowSec + (CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60);
+  const defaultWindow = calendarWindow || getCalendarWindow();
+  const start = startDateSec !== undefined ? startDateSec : Math.floor(defaultWindow.startDate.getTime() / 1000);
+  const end = endDateSec !== undefined ? endDateSec : Math.floor(defaultWindow.endDate.getTime() / 1000);
   const records = [];
+  let pages = 0;
 
-  for (let page = 0; page < maxPages; page++) {
+  for (let page = 0; ; page++) {
+    if (page >= maxPages) {
+      logger.error(`[IGDB] Pagination safety guard triggered after ${maxPages} pages`);
+      throw new ExternalProviderError('IGDB', `Pagination safety guard triggered after ${maxPages} pages`);
+    }
     const offset = page * limit;
     const query = [
       'fields id, date, human, platform.name, platform.abbreviation, region, game.id, game.name, game.summary, game.url, game.slug, game.cover.image_id, game.cover.url;',
@@ -156,14 +164,18 @@ async function fetchUpcomingGames({
     ].join(' ');
 
     const pageRecords = await queryIGDB('/release_dates', query, { client });
+    pages++;
+    logger.info(`[IGDB] offset=${offset} fetched=${pageRecords.length}`);
     records.push(...pageRecords);
 
-    if (pageRecords.length < limit || normalizeIGDBReleaseDates(records).length >= targetEvents) {
+    if (pageRecords.length < limit) {
       break;
     }
   }
 
-  return normalizeIGDBReleaseDates(records);
+  const events = normalizeIGDBReleaseDates(records);
+  Object.defineProperty(events, 'pages', { value: pages, enumerable: false });
+  return events;
 }
 
 module.exports = {

@@ -74,13 +74,47 @@ function parseIGDBDate(timestampSec) {
 }
 
 /**
- * Calculates the active calendar event window: [now - 180 days, now + 180 days].
+ * Adds calendar months while clamping the day to the target month's last day.
+ * @param {Date} date
+ * @param {number} months
+ * @returns {Date}
+ */
+function addCalendarMonths(date, months) {
+  const result = new Date(date.getTime());
+  const targetMonth = result.getUTCMonth() + months;
+  const targetYear = result.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const originalDay = result.getUTCDate();
+  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+
+  result.setUTCFullYear(targetYear, normalizedMonth, Math.min(originalDay, lastDay));
+  return result;
+}
+
+function getCalendarMonthWindows(startDate, endDate) {
+  const windows = [];
+  let cursor = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1));
+
+  while (cursor <= endDate) {
+    const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    windows.push({
+      startDate: cursor < startDate ? new Date(startDate) : new Date(cursor),
+      endDate: monthEnd > endDate ? new Date(endDate) : monthEnd,
+    });
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+  }
+
+  return windows;
+}
+
+/**
+ * Calculates the active calendar event window using calendar-month arithmetic.
  * @param {Date} [referenceDate] 
  * @returns {{ startDate: Date, endDate: Date }}
  */
 function getCalendarWindow(referenceDate = new Date()) {
-  const startDate = new Date(referenceDate.getTime() - CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60 * 1000);
-  const endDate = new Date(referenceDate.getTime() + CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60 * 1000);
+  const startDate = addCalendarMonths(referenceDate, -CALENDAR_WINDOW.PAST_MONTHS);
+  const endDate = addCalendarMonths(referenceDate, CALENDAR_WINDOW.FUTURE_MONTHS);
   return { startDate, endDate };
 }
 
@@ -88,5 +122,7 @@ module.exports = {
   formatYMD,
   parseReleaseDate,
   parseIGDBDate,
+  addCalendarMonths,
+  getCalendarMonthWindows,
   getCalendarWindow,
 };

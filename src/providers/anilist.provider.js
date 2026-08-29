@@ -7,7 +7,8 @@ const {
   normalizeAnimeAiringSchedule,
   normalizeMangaMedia,
 } = require('../normalizers/anilist.normalizer');
-const { CALENDAR_WINDOW, INGESTION } = require('../config/constants');
+const { PAGINATION } = require('../config/constants');
+const { getCalendarWindow } = require('../utils/date');
 
 const ANILIST_GRAPHQL_ENDPOINT = 'https://graphql.anilist.co';
 
@@ -105,52 +106,67 @@ async function fetchAniListGraphQL(query, variables = {}, client = axios) {
 async function fetchUpcomingAnime({
   airingAtGreater,
   airingAtLesser,
-  perPage = INGESTION.PAGE_SIZE,
-  targetEvents = INGESTION.TARGET_EVENTS_PER_PROVIDER,
-  maxPages = INGESTION.MAX_PAGES_PER_PROVIDER,
+  perPage = 50,
+  calendarWindow,
+  maxPages = Number.parseInt(process.env.PAGINATION_GUARD_MAX_PAGES, 10) || PAGINATION.EMERGENCY_MAX_PAGES,
+  requestDelayMs = Number.parseInt(process.env.ANILIST_REQUEST_DELAY_MS, 10) || PAGINATION.ANILIST_REQUEST_DELAY_MS,
+  rateLimitRetries = Number.parseInt(process.env.ANILIST_RATE_LIMIT_RETRIES, 10) || PAGINATION.ANILIST_RATE_LIMIT_RETRIES,
+  rateLimitBackoffMs = Number.parseInt(process.env.ANILIST_RATE_LIMIT_BACKOFF_MS, 10) || PAGINATION.ANILIST_RATE_LIMIT_BACKOFF_MS,
   client = axios,
 } = {}) {
-  const nowInSeconds = Math.floor(Date.now() / 1000);
-  const defaultStart = nowInSeconds - CALENDAR_WINDOW.PAST_DAYS * 24 * 60 * 60;
-  const defaultEnd = nowInSeconds + CALENDAR_WINDOW.FUTURE_DAYS * 24 * 60 * 60;
+  const defaultWindow = calendarWindow || getCalendarWindow();
+  const defaultStart = Math.floor(defaultWindow.startDate.getTime() / 1000);
+  const defaultEnd = Math.floor(defaultWindow.endDate.getTime() / 1000);
   const startSec = airingAtGreater ?? defaultStart;
   const endSec = airingAtLesser ?? defaultEnd;
   const schedulesById = new Map();
+  let pages = 0;
 
-  const countValidSchedules = () => {
-    let count = 0;
-    for (const item of schedulesById.values()) {
+  for (let page = 1; ; page++) {
+    if (page > maxPages) {
+      logger.error(`[AniList] Pagination safety guard triggered after ${maxPages} pages`);
+      throw new ExternalProviderError('AniList', `Pagination safety guard triggered after ${maxPages} pages`);
+    }
+    let data;
+    for (let attempt = 0; ; attempt++) {
       try {
-        if (normalizeAnimeAiringSchedule(item)) count++;
-      } catch (err) {
-        // Final normalization below logs malformed records once.
+        data = await fetchAniListGraphQL(
+          AIRING_ANIME_QUERY,
+          {
+            page,
+            perPage,
+            airingAtGreater: startSec,
+            airingAtLesser: endSec,
+          },
+          client
+        );
+        break;
+      } catch (error) {
+        if (error.statusCode !== 429 || attempt >= rateLimitRetries) throw error;
+        const delay = rateLimitBackoffMs * (attempt + 1);
+        logger.warn(`[ANILIST] rate limit page=${page}; retry=${attempt + 1}/${rateLimitRetries} backoff_ms=${delay}`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-    return count;
-  };
-
-  for (let page = 1; page <= maxPages; page++) {
-    const data = await fetchAniListGraphQL(
-      AIRING_ANIME_QUERY,
-      {
-        page,
-        perPage,
-        airingAtGreater: startSec,
-        airingAtLesser: endSec,
-      },
-      client
-    );
+    pages++;
 
     const pageData = data?.Page;
     const schedules = pageData?.airingSchedules || [];
+    logger.info(`[ANILIST] page=${page} fetched=${schedules.length}`);
     for (const item of schedules) {
       const key = item?.id ? String(item.id) : `${item?.media?.id}:${item?.episode}:${item?.airingAt}`;
       if (key !== 'undefined:undefined:undefined') schedulesById.set(key, item);
     }
 
     const pageInfo = pageData?.pageInfo;
-    if (countValidSchedules() >= targetEvents || !pageInfo?.hasNextPage || schedules.length === 0) {
+    if (!pageInfo || pageInfo.currentPage !== page) {
+      throw new ExternalProviderError('AniList', `Malformed pagination metadata on page ${page}`);
+    }
+    if (!pageInfo.hasNextPage || schedules.length === 0) {
       break;
+    }
+    if (requestDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, requestDelayMs));
     }
   }
 
@@ -164,6 +180,7 @@ async function fetchUpcomingAnime({
     }
   }
 
+  Object.defineProperty(results, 'pages', { value: pages, enumerable: false });
   return results;
 }
 

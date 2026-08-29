@@ -25,56 +25,46 @@ async function upsertEventsBatch(events, clientOverride = null) {
       await client.query('BEGIN');
     }
 
-    const queryText = `
-      INSERT INTO events (
-        id,
-        source,
-        category,
-        external_id,
-        title,
-        description,
-        release_date,
-        is_all_day,
-        url,
-        image_url,
-        raw_metadata,
-        created_at,
-        updated_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
-      ON CONFLICT (source, category, external_id)
-      DO UPDATE SET
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        release_date = EXCLUDED.release_date,
-        is_all_day = EXCLUDED.is_all_day,
-        url = EXCLUDED.url,
-        image_url = EXCLUDED.image_url,
-        raw_metadata = EXCLUDED.raw_metadata,
-        updated_at = NOW()
-      RETURNING id, (xmax = 0) AS is_insert;
-    `;
-
     let processedCount = 0;
+    const chunkSize = 1000;
+    for (let offset = 0; offset < events.length; offset += chunkSize) {
+      const chunk = events.slice(offset, offset + chunkSize);
+      const params = [];
+      const values = chunk.map((event, index) => {
+        const base = index * 11;
+        params.push(
+          `${event.source}:${event.category}:${event.externalId}`,
+          event.source,
+          event.category,
+          String(event.externalId),
+          event.title,
+          event.description || null,
+          event.releaseDate,
+          Boolean(event.isAllDay),
+          event.url || null,
+          event.imageUrl || null,
+          event.rawMetadata ? JSON.stringify(event.rawMetadata) : null,
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, NOW(), NOW())`;
+      }).join(',');
 
-    for (const event of events) {
-      const id = `${event.source}:${event.category}:${event.externalId}`;
-      const params = [
-        id,
-        event.source,
-        event.category,
-        String(event.externalId),
-        event.title,
-        event.description || null,
-        event.releaseDate,
-        Boolean(event.isAllDay),
-        event.url || null,
-        event.imageUrl || null,
-        event.rawMetadata ? JSON.stringify(event.rawMetadata) : null,
-      ];
-
-      await client.query(queryText, params);
-      processedCount++;
+      await client.query(`
+        INSERT INTO events (
+          id, source, category, external_id, title, description, release_date,
+          is_all_day, url, image_url, raw_metadata, created_at, updated_at
+        ) VALUES ${values}
+        ON CONFLICT (source, category, external_id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          description = EXCLUDED.description,
+          release_date = EXCLUDED.release_date,
+          is_all_day = EXCLUDED.is_all_day,
+          url = EXCLUDED.url,
+          image_url = EXCLUDED.image_url,
+          raw_metadata = EXCLUDED.raw_metadata,
+          updated_at = NOW();
+      `, params);
+      processedCount += chunk.length;
     }
 
     if (!clientOverride) {

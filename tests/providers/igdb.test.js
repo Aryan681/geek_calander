@@ -278,34 +278,32 @@ describe('IGDB Provider Tests', () => {
       assert.equal(events[1].title, '[Game] Game Beta (PS5)');
     });
 
-    it('collects bounded IGDB pages and consolidates a game/date split across pages', async () => {
+    it('collects every IGDB page beyond 100 records and consolidates cross-page releases', async () => {
       let igdbCalls = 0;
+      const records = [
+        ...Array.from({ length: 50 }, (_, index) => ({ id: index + 1, date: 1788048000, game: { id: index + 1, name: `Game ${index + 1}` }, platform: { name: 'PC' } })),
+        { id: 51, date: 1788048000, game: { id: 50, name: 'Game 50' }, platform: { name: 'Switch' } },
+        ...Array.from({ length: 49 }, (_, index) => ({ id: index + 52, date: 1788048000, game: { id: index + 51, name: `Game ${index + 51}` }, platform: { name: 'PC' } })),
+        ...Array.from({ length: 22 }, (_, index) => ({ id: index + 101, date: 1788048000, game: { id: index + 100, name: `Game ${index + 100}` }, platform: { name: 'PC' } })),
+      ];
       const mockClient = {
         post: async (url, query) => {
           if (url.includes('twitch.tv')) {
             return { data: { access_token: 'mock_token_paged', expires_in: 3600 } };
           }
           igdbCalls++;
-          assert.match(query, new RegExp(`offset ${(igdbCalls - 1) * 2};`));
-          return {
-            data: igdbCalls === 1
-              ? [
-                  { id: 1, date: 1788048000, game: { id: 10, name: 'Paged Game' }, platform: { name: 'PC' } },
-                  { id: 2, date: 1788048000, game: { id: 20, name: 'Second Game' }, platform: { name: 'PS5' } },
-                ]
-              : [
-                  { id: 3, date: 1788048000, game: { id: 10, name: 'Paged Game' }, platform: { name: 'Switch' } },
-                  { id: 4, date: 1788048000, game: { id: 30, name: 'Third Game' }, platform: { name: 'Xbox' } },
-                ],
-          };
+          const offset = (igdbCalls - 1) * 50;
+          assert.match(query, new RegExp(`limit 50; offset ${offset};`));
+          return { data: records.slice(offset, offset + 50) };
         },
       };
 
-      const events = await fetchUpcomingGames({ client: mockClient, limit: 2, targetEvents: 3, maxPages: 3 });
+      const events = await fetchUpcomingGames({ client: mockClient, limit: 50 });
 
-      assert.equal(igdbCalls, 2);
-      assert.equal(events.length, 3);
-      assert.equal(events.find((event) => event.externalId === 'game-10-date-1788048000').title, '[Game] Paged Game (PC, Switch)');
+      assert.equal(igdbCalls, 3);
+      assert.equal(events.length, 121);
+      assert.equal(events.pages, 3);
+      assert.equal(events.find((event) => event.externalId === 'game-50-date-1788048000').title, '[Game] Game 50 (PC, Switch)');
     });
 
     it('handles HTTP 429 rate-limit error gracefully', async () => {

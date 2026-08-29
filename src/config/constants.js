@@ -18,14 +18,18 @@ const SOURCE_DISPLAY_NAMES = Object.freeze({
 });
 
 const CALENDAR_WINDOW = Object.freeze({
-  PAST_DAYS: 180,
-  FUTURE_DAYS: 180,
+  PAST_MONTHS: 6,
+  FUTURE_MONTHS: 6,
 });
 
-const INGESTION = Object.freeze({
-  TARGET_EVENTS_PER_PROVIDER: 100,
-  MAX_PAGES_PER_PROVIDER: 5,
-  PAGE_SIZE: 50,
+const PAGINATION = Object.freeze({
+  // Emergency-only guard. Providers must normally stop using their own metadata.
+  EMERGENCY_MAX_PAGES: 10000,
+  ANILIST_REQUEST_DELAY_MS: 750,
+  ANILIST_RATE_LIMIT_RETRIES: 3,
+  ANILIST_RATE_LIMIT_BACKOFF_MS: 5000,
+  TMDB_PAGE_CONCURRENCY: 4,
+  TMDB_BATCH_DELAY_MS: 1000,
 });
 
 const CACHE = Object.freeze({
@@ -50,7 +54,7 @@ module.exports = {
   CATEGORIES,
   SOURCE_DISPLAY_NAMES,
   CALENDAR_WINDOW,
-  INGESTION,
+  PAGINATION,
   CACHE,
   IGDB_REGIONS,
 };

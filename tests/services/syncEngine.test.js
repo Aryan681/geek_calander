@@ -80,6 +80,30 @@ describe('Sync Engine & Repository Tests', () => {
   });
 
   describe('Provider Isolation & Orchestration', () => {
+    it('passes one six-calendar-month window to every provider and reports pages', async () => {
+      const windows = [];
+      const makeProvider = (source, category) => async ({ calendarWindow }) => {
+        windows.push(calendarWindow);
+        const events = [{ externalId: `${source}-1`, source, category, title: 'Event', releaseDate: new Date(), isAllDay: false }];
+        Object.defineProperty(events, 'pages', { value: 7, enumerable: false });
+        return events;
+      };
+      const outcome = await runSync({
+        providers: {
+          anilist: makeProvider('anilist', 'anime'),
+          tmdb: makeProvider('tmdb', 'movie'),
+          igdb: makeProvider('igdb', 'game'),
+        },
+        repository: { upsertEventsBatch: async (items) => ({ total: items.length, insertedOrUpdated: items.length }) },
+      });
+
+      assert.equal(outcome.success, true);
+      assert.equal(windows.length, 3);
+      assert.ok(windows.every((window) => window.startDate.getTime() === windows[0].startDate.getTime()));
+      assert.ok(windows.every((window) => window.endDate.getTime() === windows[0].endDate.getTime()));
+      assert.deepEqual(outcome.results.map((result) => result.pages), [7, 7, 7]);
+    });
+
     it('succeeds completely when all 3 providers succeed', async () => {
       const mockProviders = {
         anilist: async () => [

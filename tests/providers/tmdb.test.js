@@ -161,13 +161,14 @@ describe('TMDB Provider Tests', () => {
 
   describe('API Handling & Dynamic Window Verification (Mocked)', () => {
     it('dynamically computes primary_release_date.gte and lte based on current date', async () => {
-      let capturedParams = null;
+      const capturedParams = [];
       const mockClient = {
         get: async (_url, config) => {
-          capturedParams = config.params;
+          capturedParams.push(config.params);
           return {
             data: {
               page: 1,
+              total_pages: 1,
               results: [],
             },
           };
@@ -176,15 +177,12 @@ describe('TMDB Provider Tests', () => {
 
       await fetchUpcomingMovies({ client: mockClient });
 
-      assert.ok(capturedParams);
-      assert.equal(capturedParams.region, 'IN');
-      assert.match(capturedParams['primary_release_date.gte'], /^\d{4}-\d{2}-\d{2}$/);
-      assert.match(capturedParams['primary_release_date.lte'], /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(capturedParams.length, 13);
+      assert.equal(capturedParams[0].region, 'IN');
+      assert.equal(capturedParams[0]['primary_release_date.gte'], '2026-02-28');
+      assert.equal(capturedParams[capturedParams.length - 1]['primary_release_date.lte'], '2027-02-28');
 
-      const gte = new Date(capturedParams['primary_release_date.gte']);
-      const lte = new Date(capturedParams['primary_release_date.lte']);
-      const diffDays = Math.round((lte.getTime() - gte.getTime()) / (1000 * 60 * 60 * 24));
-      assert.equal(diffDays >= 359 && diffDays <= 361, true); // 180 day past-to-future window
+      assert.equal(capturedParams.every((params) => params['primary_release_date.gte'] && params['primary_release_date.lte']), true);
     });
 
     it('normalizes multiple movies from a mocked discover response in a single HTTP call', async () => {
@@ -195,6 +193,7 @@ describe('TMDB Provider Tests', () => {
           return {
             data: {
               page: 1,
+              total_pages: 1,
               results: [
                 { id: 1, title: 'Movie One', release_date: '2026-10-10', overview: 'Synopsis 1' },
                 { id: 2, title: 'Movie Two', release_date: '2026-10-20', overview: 'Synopsis 2' },
@@ -205,7 +204,7 @@ describe('TMDB Provider Tests', () => {
         },
       };
 
-      const events = await fetchUpcomingMovies({ client: mockClient });
+      const events = await fetchUpcomingMovies({ client: mockClient, startDate: '2026-10-10', endDate: '2026-10-20' });
 
       assert.equal(callCount, 1, 'Only 1 HTTP request should be made for the discover page');
       assert.equal(events.length, 2);
@@ -213,7 +212,7 @@ describe('TMDB Provider Tests', () => {
       assert.equal(events[1].title, '[Movie] Movie Two');
     });
 
-    it('collects movies across bounded pages and deduplicates page overlap', async () => {
+    it('collects every movie page beyond 100 records and deduplicates page overlap', async () => {
       let calls = 0;
       const mockClient = {
         get: async (_url, config) => {
@@ -222,27 +221,46 @@ describe('TMDB Provider Tests', () => {
           return {
             data: {
               page,
-              total_pages: 2,
+              total_pages: 3,
               results: page === 1
-                ? [
-                    { id: 1, title: 'Movie One', release_date: '2026-10-10' },
-                    { id: 2, title: 'Movie Two', release_date: '2026-10-11' },
-                  ]
-                : [
-                    { id: 2, title: 'Movie Two Updated', release_date: '2026-10-11' },
-                    { id: 3, title: 'Movie Three', release_date: '2026-10-12' },
-                  ],
+                ? Array.from({ length: 50 }, (_, index) => ({ id: index + 1, title: `Movie ${index + 1}`, release_date: '2026-08-01' }))
+                : page === 2
+                  ? Array.from({ length: 50 }, (_, index) => ({ id: index + 50, title: `Movie ${index + 50} Updated`, release_date: '2026-08-01' }))
+                  : Array.from({ length: 22 }, (_, index) => ({ id: index + 100, title: `Movie ${index + 100}`, release_date: '2026-08-01' })),
             },
           };
         },
       };
 
-      const events = await fetchUpcomingMovies({ client: mockClient, targetEvents: 3, maxPages: 3 });
+      const events = await fetchUpcomingMovies({ client: mockClient, startDate: '2026-08-01', endDate: '2026-08-31' });
 
-      assert.equal(calls, 2);
-      assert.equal(events.length, 3);
-      assert.deepEqual(events.map((event) => event.externalId), ['1', '2', '3']);
-      assert.equal(events.find((event) => event.externalId === '2').title, '[Movie] Movie Two Updated');
+      assert.equal(calls, 3);
+      assert.equal(events.length, 121);
+      assert.equal(events.pages, 3);
+      assert.equal(events.find((event) => event.externalId === '50').title, '[Movie] Movie 50 Updated');
+    });
+
+    it('excludes normalized movies outside the requested date window', async () => {
+      const mockClient = {
+        get: async () => ({
+          data: {
+            page: 1,
+            total_pages: 1,
+            results: [
+              { id: 1, title: 'Inside', release_date: '2026-06-01' },
+              { id: 2, title: 'Outside', release_date: '2027-01-01' },
+            ],
+          },
+        }),
+      };
+
+      const events = await fetchUpcomingMovies({
+        startDate: '2026-05-01',
+        endDate: '2026-06-30',
+        client: mockClient,
+      });
+
+      assert.deepEqual(events.map((event) => event.externalId), ['1']);
     });
 
     it('handles network / API failure gracefully', async () => {

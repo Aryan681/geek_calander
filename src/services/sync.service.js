@@ -4,6 +4,7 @@ const igdbProvider = require('../providers/igdb.provider');
 const eventRepository = require('../repositories/event.repository');
 const logger = require('../utils/logger');
 const { VALID_SOURCES, VALID_CATEGORIES, validateEvent, deduplicateEvents } = require('../utils/validation');
+const { getCalendarWindow } = require('../utils/date');
 
 /**
  * Executes a sync run for a single provider in complete isolation.
@@ -11,9 +12,9 @@ const { VALID_SOURCES, VALID_CATEGORIES, validateEvent, deduplicateEvents } = re
  * @param {string} name - Provider identifier (e.g. 'ANILIST', 'TMDB', 'IGDB')
  * @param {Function} fetchFn - Async function returning ReleaseEvent[]
  * @param {Object} [repoOverride] - Optional repository for testing
- * @returns {Promise<{ name: string, success: boolean, fetched: number, valid: number, invalid: number, upserted: number, error?: string }>}
+ * @returns {Promise<{ name: string, success: boolean, fetched: number, valid: number, invalid: number, upserted: number, pages: number, error?: string }>}
  */
-async function syncProvider(name, fetchFn, repoOverride = eventRepository) {
+async function syncProvider(name, fetchFn, repoOverride = eventRepository, fetchOptions = {}) {
   const stats = {
     name,
     success: false,
@@ -21,11 +22,13 @@ async function syncProvider(name, fetchFn, repoOverride = eventRepository) {
     valid: 0,
     invalid: 0,
     upserted: 0,
+    pages: 0,
   };
 
   try {
-    const rawEvents = await fetchFn();
+    const rawEvents = await fetchFn(fetchOptions);
     stats.fetched = Array.isArray(rawEvents) ? rawEvents.length : 0;
+    stats.pages = Number.isInteger(rawEvents?.pages) ? rawEvents.pages : 1;
 
     const validEvents = [];
     for (const event of rawEvents || []) {
@@ -47,7 +50,7 @@ async function syncProvider(name, fetchFn, repoOverride = eventRepository) {
     }
 
     stats.success = true;
-    logger.info(`[${name}] fetched=${stats.fetched} valid=${stats.valid} invalid=${stats.invalid} upserted=${stats.upserted}`);
+    logger.info(`[${name}] fetched=${stats.fetched} valid=${stats.valid} invalid=${stats.invalid} upserted=${stats.upserted} pages=${stats.pages}`);
     return stats;
   } catch (error) {
     stats.success = false;
@@ -74,6 +77,8 @@ async function runSync({
   repository = eventRepository,
 } = {}) {
   logger.info('[SYNC] Starting ingestion run...');
+  const calendarWindow = getCalendarWindow();
+  logger.info(`[SYNC] window=${calendarWindow.startDate.toISOString()} -> ${calendarWindow.endDate.toISOString()}`);
 
   const providerConfigs = [
     { name: 'ANILIST', fn: providers.anilist },
@@ -81,16 +86,14 @@ async function runSync({
     { name: 'IGDB', fn: providers.igdb },
   ];
 
-  const results = [];
-  const failedProviders = [];
-
-  for (const p of providerConfigs) {
-    const result = await syncProvider(p.name, p.fn, repository);
-    results.push(result);
-    if (!result.success) {
-      failedProviders.push(p.name.toLowerCase());
-    }
-  }
+  // Providers are independent external systems. Run them concurrently so a
+  // slow or paginated provider does not hold the other two behind it.
+  const results = await Promise.all(
+    providerConfigs.map((p) => syncProvider(p.name, p.fn, repository, { calendarWindow }))
+  );
+  const failedProviders = results
+    .filter((result) => !result.success)
+    .map((result) => result.name.toLowerCase());
 
   const overallSuccess = failedProviders.length === 0;
 

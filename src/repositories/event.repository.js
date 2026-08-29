@@ -175,8 +175,66 @@ async function getEventsInWindowBatch(
   }
 }
 
+/**
+ * Lists frontend event fields using bounded keyset pagination and matching
+ * filtered count. raw_metadata is intentionally excluded.
+ */
+async function listEvents({ from, to, category = null, search = null, cursor = null, limit }, clientOverride = null) {
+  const client = clientOverride || pool;
+  const values = [from, to];
+  const filters = ['release_date >= $1', 'release_date < $2'];
+
+  if (category) {
+    values.push(category);
+    filters.push(`category = $${values.length}`);
+  }
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(`title ILIKE $${values.length}`);
+  }
+  if (cursor) {
+    values.push(cursor.releaseDate, cursor.id);
+    filters.push(`(release_date > $${values.length - 1} OR (release_date = $${values.length - 1} AND id > $${values.length}))`);
+  }
+
+  const pageValues = [...values, limit + 1];
+  const countValues = values.slice(0, cursor ? values.length - 2 : values.length);
+  const countFilters = filters.slice(0, cursor ? filters.length - 1 : filters.length);
+  const limitPlaceholder = `$${pageValues.length}`;
+  const pageQuery = {
+    text: `
+      SELECT id, source, category, external_id, title, description,
+             release_date, image_url, url
+      FROM events
+      WHERE ${filters.join(' AND ')}
+      ORDER BY release_date ASC, id ASC
+      LIMIT ${limitPlaceholder};
+    `,
+    values: pageValues,
+    statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+  };
+  const countQuery = {
+    text: `SELECT COUNT(*)::int AS total FROM events WHERE ${countFilters.join(' AND ')};`,
+    values: countValues,
+    statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+  };
+
+  try {
+    const [pageResult, countResult] = await Promise.all([client.query(pageQuery), client.query(countQuery)]);
+    const hasMore = pageResult.rows.length > limit;
+    return {
+      rows: hasMore ? pageResult.rows.slice(0, limit) : pageResult.rows,
+      hasMore,
+      total: countResult.rows[0].total,
+    };
+  } catch (error) {
+    throw new DatabaseError('Failed to retrieve events', error);
+  }
+}
+
 module.exports = {
   upsertEventsBatch,
   getEventsInWindow,
   getEventsInWindowBatch,
+  listEvents,
 };

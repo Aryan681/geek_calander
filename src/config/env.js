@@ -25,6 +25,7 @@ function validateEnv() {
   return {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT, 10) || 3000,
+    frontendOrigin: process.env.FRONTEND_ORIGIN || '',
     database: {
       connectionString: databaseUrl,
       host: process.env.PGHOST || 'localhost',

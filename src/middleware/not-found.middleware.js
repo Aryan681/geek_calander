@@ -1,5 +1,3 @@
-const { NotFoundError } = require('../utils/errors');
-
 /**
  * 404 handler for any unmapped route
  */

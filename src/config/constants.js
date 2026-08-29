@@ -36,6 +36,11 @@ const CACHE = Object.freeze({
   CALENDAR_MAX_AGE_SECONDS: 1800, // 30 minutes
 });
 
+const CALENDAR_FEED = Object.freeze({
+  BATCH_SIZE: 500,
+  QUERY_TIMEOUT_MS: 15000,
+});
+
 const IGDB_REGIONS = Object.freeze({
   1: 'Europe',
   2: 'North America',
@@ -55,6 +60,7 @@ module.exports = {
   SOURCE_DISPLAY_NAMES,
   CALENDAR_WINDOW,
   PAGINATION,
+  CALENDAR_FEED,
   CACHE,
   IGDB_REGIONS,
 };

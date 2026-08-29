@@ -1,6 +1,7 @@
 const { pool } = require('../db/db');
 const logger = require('../utils/logger');
 const { DatabaseError } = require('../utils/errors');
+const { CALENDAR_FEED } = require('../config/constants');
 
 /**
  * Upserts a batch of validated ReleaseEvent objects in a single database transaction.
@@ -104,13 +105,10 @@ async function getEventsInWindow(startDate, endDate, clientOverride = null) {
   try {
     const res = await client.query(
       `
-      SELECT 
-        id, source, category, external_id, title, description,
-        release_date, is_all_day, url, image_url, raw_metadata,
-        created_at, updated_at
+      SELECT id, source, category, title, description, release_date, is_all_day, url
       FROM events
       WHERE release_date >= $1 AND release_date <= $2
-      ORDER BY release_date ASC;
+      ORDER BY release_date ASC, id ASC;
       `,
       [startDate, endDate]
     );
@@ -120,7 +118,65 @@ async function getEventsInWindow(startDate, endDate, clientOverride = null) {
   }
 }
 
+/**
+ * Retrieves one bounded, deterministically ordered feed page. The cursor is
+ * the last (release_date, id) pair returned by the previous page.
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @param {{ releaseDate: Date|string, id: string }|null} [cursor]
+ * @param {number} [batchSize]
+ * @param {Object} [clientOverride]
+ * @returns {Promise<{ rows: Array<Object>, nextCursor: Object|null, hasMore: boolean }>}
+ */
+async function getEventsInWindowBatch(
+  startDate,
+  endDate,
+  cursor = null,
+  batchSize = CALENDAR_FEED.BATCH_SIZE,
+  clientOverride = null
+) {
+  const client = clientOverride || pool;
+  const safeBatchSize = Math.max(1, Math.min(Number.parseInt(batchSize, 10) || CALENDAR_FEED.BATCH_SIZE, 5000));
+  const values = [startDate, endDate];
+  let cursorClause = '';
+
+  if (cursor) {
+    values.push(cursor.releaseDate, cursor.id);
+    cursorClause = `AND (release_date > $3 OR (release_date = $3 AND id > $4))`;
+  }
+
+  values.push(safeBatchSize + 1);
+
+  try {
+    const res = await client.query({
+      text: `
+        SELECT id, source, category, title, description, release_date, is_all_day, url
+        FROM events
+        WHERE release_date >= $1
+          AND release_date <= $2
+          ${cursorClause}
+        ORDER BY release_date ASC, id ASC
+        LIMIT $${values.length};
+      `,
+      values,
+      statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+    });
+
+    const hasMore = res.rows.length > safeBatchSize;
+    const rows = hasMore ? res.rows.slice(0, safeBatchSize) : res.rows;
+    const last = rows[rows.length - 1];
+    return {
+      rows,
+      hasMore,
+      nextCursor: hasMore && last ? { releaseDate: last.release_date, id: last.id } : null,
+    };
+  } catch (error) {
+    throw new DatabaseError('Failed to retrieve calendar feed batch', error);
+  }
+}
+
 module.exports = {
   upsertEventsBatch,
   getEventsInWindow,
+  getEventsInWindowBatch,
 };

@@ -10,6 +10,12 @@ const server = app.listen(PORT, () => {
   logger.info(`[SERVER] Calendar feed available at: http://localhost:${PORT}/calendar.ics`);
 });
 
+// Bound idle/slow HTTP connections so a stalled feed cannot occupy a Render
+// worker indefinitely. The feed itself is written incrementally below this
+// timeout and should complete well within the limit under normal operation.
+server.requestTimeout = 120000;
+server.headersTimeout = 15000;
+
 // Graceful shutdown handling
 let isShuttingDown = false;
 

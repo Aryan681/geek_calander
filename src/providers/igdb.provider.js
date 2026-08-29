@@ -142,7 +142,6 @@ async function fetchUpcomingGames({
   maxPages = Number.parseInt(process.env.PAGINATION_GUARD_MAX_PAGES, 10) || PAGINATION.EMERGENCY_MAX_PAGES,
   client = axios,
 } = {}) {
-  const nowSec = Math.floor(Date.now() / 1000);
   const defaultWindow = calendarWindow || getCalendarWindow();
   const start = startDateSec !== undefined ? startDateSec : Math.floor(defaultWindow.startDate.getTime() / 1000);
   const end = endDateSec !== undefined ? endDateSec : Math.floor(defaultWindow.endDate.getTime() / 1000);

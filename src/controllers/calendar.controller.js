@@ -1,4 +1,4 @@
-const { getDynamicCalendarFeed } = require('../services/calendar.service');
+const { streamDynamicCalendarFeed } = require('../services/calendar.service');
 const logger = require('../utils/logger');
 
 /**
@@ -7,17 +7,35 @@ const logger = require('../utils/logger');
  */
 async function getCalendarFeed(req, res, next) {
   try {
-    const icsContent = await getDynamicCalendarFeed();
-
     res.set({
       'Content-Type': 'text/calendar; charset=utf-8',
       'Cache-Control': 'public, max-age=1800',
       'Content-Disposition': 'inline; filename="calendar.ics"',
     });
+    res.status(200);
 
-    return res.status(200).send(icsContent);
+    for await (const chunk of streamDynamicCalendarFeed()) {
+      if (!res.write(chunk)) {
+        await new Promise((resolve, reject) => {
+          const onDrain = () => {
+            res.removeListener('error', onError);
+            resolve();
+          };
+          const onError = (error) => {
+            res.removeListener('drain', onDrain);
+            reject(error);
+          };
+          res.once('drain', onDrain);
+          res.once('error', onError);
+        });
+      }
+    }
+    return res.end();
   } catch (error) {
     logger.error('[CALENDAR] Failed to generate calendar.ics feed:', error.message);
+    if (res.headersSent) {
+      return res.destroy();
+    }
     return next(error);
   }
 }

@@ -7,6 +7,7 @@ const { generateCalendarICS } = require('../../src/services/ics.service');
 const {
   getCalendarWindow,
   getDynamicCalendarFeed,
+  streamDynamicCalendarFeed,
 } = require('../../src/services/calendar.service');
 const { addCalendarMonths } = require('../../src/utils/date');
 
@@ -222,6 +223,73 @@ describe('Calendar Feed & Express Server Tests', () => {
 
       assert.match(ics, /UID:tmdb:movie:888/);
       assert.match(ics, /SUMMARY:\[Movie\] Window Test Movie/);
+    });
+  });
+
+  describe('Bounded Feed Pagination & Streaming', () => {
+    it('serializes 1,001 events across bounded pages without duplicates or skipped records', async () => {
+      const allEvents = Array.from({ length: 1001 }, (_, index) => ({
+        id: `tmdb:movie:${index}`,
+        source: 'tmdb',
+        category: 'movie',
+        title: `Movie ${index}`,
+        release_date: new Date(`2026-06-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z`),
+        is_all_day: true,
+      })).sort((a, b) => a.release_date - b.release_date || a.id.localeCompare(b.id));
+      const requestedBatches = [];
+      const repository = {
+        getEventsInWindowBatch: async (start, end, cursor, batchSize) => {
+          assert.ok(start instanceof Date);
+          assert.ok(end instanceof Date);
+          assert.equal(batchSize, 100);
+          const startIndex = cursor ? allEvents.findIndex((event) => event.id === cursor.id) + 1 : 0;
+          const rows = allEvents.slice(startIndex, startIndex + batchSize);
+          requestedBatches.push({ cursor, rows: rows.length });
+          const last = rows[rows.length - 1];
+          return {
+            rows,
+            nextCursor: startIndex + rows.length < allEvents.length ? { releaseDate: last.release_date, id: last.id } : null,
+          };
+        },
+      };
+
+      const chunks = [];
+      for await (const chunk of streamDynamicCalendarFeed({
+        repository,
+        referenceDate: new Date('2026-06-01T00:00:00.000Z'),
+        batchSize: 100,
+      })) {
+        chunks.push(chunk);
+      }
+
+      const feed = chunks.join('');
+      const uids = [...feed.matchAll(/UID:([^\r\n]+)/g)].map((match) => match[1]);
+      assert.equal(uids.length, 1001);
+      assert.equal(new Set(uids).size, 1001);
+      assert.equal(uids[0], allEvents[0].id);
+      assert.equal(uids.at(-1), allEvents.at(-1).id);
+      assert.equal(requestedBatches.length, 11);
+      assert.match(feed, /^BEGIN:VCALENDAR/);
+      assert.match(feed, /END:VCALENDAR$/);
+    });
+
+    it('emits a complete empty calendar without querying a second page', async () => {
+      let calls = 0;
+      const chunks = [];
+      for await (const chunk of streamDynamicCalendarFeed({
+        repository: {
+          getEventsInWindowBatch: async () => {
+            calls++;
+            return { rows: [], nextCursor: null };
+          },
+        },
+      })) chunks.push(chunk);
+
+      const feed = chunks.join('');
+      assert.equal(calls, 1);
+      assert.equal((feed.match(/BEGIN:VEVENT/g) || []).length, 0);
+      assert.match(feed, /BEGIN:VCALENDAR/);
+      assert.match(feed, /END:VCALENDAR/);
     });
   });
 

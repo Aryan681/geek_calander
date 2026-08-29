@@ -44,3 +44,6 @@ CREATE TABLE IF NOT EXISTS events (
 
 -- Index for high-performance calendar date window queries
 CREATE INDEX IF NOT EXISTS idx_events_release_date ON events (release_date ASC);
+
+-- Supports deterministic keyset pagination for the calendar feed.
+CREATE INDEX IF NOT EXISTS idx_events_calendar_release_id ON events (release_date ASC, id ASC);

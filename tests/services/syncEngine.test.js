@@ -10,6 +10,7 @@ const {
 const {
   upsertEventsBatch,
   getEventsInWindow,
+  getEventsInWindowBatch,
 } = require('../../src/repositories/event.repository');
 
 describe('Sync Engine & Repository Tests', () => {
@@ -186,7 +187,7 @@ describe('Sync Engine & Repository Tests', () => {
     const cleanup = async () => {
       try {
         await pool.query(
-          `DELETE FROM events WHERE id = $1 OR (source = $2 AND category = $3 AND external_id = $4)`,
+          `DELETE FROM events WHERE id = $1 OR (source = $2 AND category = $3 AND external_id = $4) OR id LIKE 'anilist:anime:feed-batch-%'`,
           [`${testEvent.source}:${testEvent.category}:${testEvent.externalId}`, testEvent.source, testEvent.category, testEvent.externalId]
         );
       } catch (e) {
@@ -275,6 +276,41 @@ describe('Sync Engine & Repository Tests', () => {
       assert.ok(Array.isArray(events));
       const found = events.find((e) => e.id === 'anilist:anime:sync-test-999');
       assert.ok(found, 'Should find the test event within the 2026-11-01 window');
+    });
+
+    it('paginates a large same-date dataset with a release_date/id keyset', async () => {
+      const events = Array.from({ length: 1001 }, (_, index) => ({
+        externalId: `feed-batch-${String(index).padStart(4, '0')}`,
+        source: 'anilist',
+        category: 'anime',
+        title: `Feed batch event ${index}`,
+        releaseDate: new Date('2026-11-15T00:00:00.000Z'),
+        isAllDay: false,
+      }));
+      await upsertEventsBatch(events);
+
+      const found = [];
+      let cursor = null;
+      do {
+        const page = await getEventsInWindowBatch(
+          new Date('2026-11-01T00:00:00.000Z'),
+          new Date('2026-12-01T00:00:00.000Z'),
+          cursor,
+          250
+        );
+        found.push(...page.rows);
+        cursor = page.nextCursor;
+      } while (cursor);
+
+      const inserted = found.filter((event) => event.id.startsWith('anilist:anime:feed-batch-'));
+      assert.equal(inserted.length, 1001);
+      assert.equal(new Set(inserted.map((event) => event.id)).size, 1001);
+      for (let index = 1; index < found.length; index++) {
+        assert.ok(
+          found[index - 1].release_date < found[index].release_date ||
+          (found[index - 1].release_date.getTime() === found[index].release_date.getTime() && found[index - 1].id < found[index].id)
+        );
+      }
     });
   });
 });

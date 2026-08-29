@@ -101,3 +101,18 @@ export async function fetchEvents(query, signal) {
 
   return { events: [...eventsById.values()], nextCursor: cursor, total };
 }
+
+export async function fetchRoulette({ category = "all", window = "month", mode = "random", exclude = [] } = {}, signal) {
+  const params = new URLSearchParams({ category, window, mode });
+  if (exclude.length) params.set("exclude", exclude.join(","));
+  const response = await fetch(`${API_BASE_URL}/roulette?${params}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok)
+    throw new ApiError(response.status, `Roulette service returned ${response.status}`);
+  const payload = await response.json();
+  const event = normalizeEvent(payload?.event);
+  if (!event) throw new ApiError(200, "Roulette returned an invalid event");
+  return { event };
+}

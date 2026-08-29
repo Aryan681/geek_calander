@@ -12,6 +12,7 @@ export function Header({ onSearch, onMenu }) {
       <nav>
         <NavLink to="/">Calendar</NavLink>
         <NavLink to="/discover">Discover</NavLink>
+        <NavLink to="/roulette">Geek Roulette</NavLink>
         <NavLink to="/about">About</NavLink>
       </nav>
       <button

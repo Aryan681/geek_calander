@@ -140,4 +140,5 @@ module.exports = {
   listEvents,
   parseDateParameter,
   parseLimit,
+  mapEvent,
 };

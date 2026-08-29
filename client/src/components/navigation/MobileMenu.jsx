@@ -17,6 +17,9 @@ export function MobileMenu({ open, onClose }) {
       <NavLink onClick={onClose} to="/discover">
         Discover
       </NavLink>
+      <NavLink onClick={onClose} to="/roulette">
+        Geek Roulette
+      </NavLink>
       <NavLink onClick={onClose} to="/about">
         About
       </NavLink>

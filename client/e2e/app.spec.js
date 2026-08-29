@@ -6,6 +6,10 @@ test("loads calendar shell and handles navigation", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: /next thing/i }),
   ).toBeVisible();
+  await page.getByRole("link", { name: "Geek Roulette" }).click();
+  await expect(
+    page.getByRole("heading", { name: /don't know what to watch/i }),
+  ).toBeVisible();
 });
 test("404 route is useful", async ({ page }) => {
   await page.goto("/missing");

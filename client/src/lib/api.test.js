@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchEvents, ApiError } from "./api";
+import { fetchEvents, fetchRoulette, ApiError } from "./api";
 afterEach(() => vi.restoreAllMocks());
 describe("event adapter", () => {
   it("requests a bounded window and normalizes valid records", async () => {
@@ -79,5 +79,21 @@ describe("event adapter", () => {
     ]);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1][0]).toContain("cursor=page-2");
+  });
+  it("fetches and normalizes one roulette result with exclusions", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ event: { id: "game:1", title: "Game", category: "game", releaseDate: "2026-08-01" } }),
+    });
+    const result = await fetchRoulette({ category: "game", window: "week", mode: "random", exclude: ["game:0"] });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("exclude=game%3A0"), expect.anything());
+    expect(result.event.id).toBe("game:1");
+  });
+  it("supports cancellation and rejects malformed roulette responses", async () => {
+    const controller = new AbortController();
+    global.fetch = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    await expect(fetchRoulette({}, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ event: {} }) });
+    await expect(fetchRoulette()).rejects.toBeInstanceOf(ApiError);
   });
 });

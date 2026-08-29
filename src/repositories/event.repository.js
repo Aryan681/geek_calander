@@ -1,7 +1,12 @@
-const { pool } = require('../db/db');
 const logger = require('../utils/logger');
 const { DatabaseError } = require('../utils/errors');
 const { CALENDAR_FEED } = require('../config/constants');
+
+let pool;
+function getPool() {
+  if (!pool) pool = require('../db/db').pool;
+  return pool;
+}
 
 /**
  * Upserts a batch of validated ReleaseEvent objects in a single database transaction.
@@ -18,7 +23,7 @@ async function upsertEventsBatch(events, clientOverride = null) {
     return { total: 0, insertedOrUpdated: 0 };
   }
 
-  const client = clientOverride || await pool.connect();
+  const client = clientOverride || await getPool().connect();
   const shouldRelease = !clientOverride;
 
   try {
@@ -101,7 +106,7 @@ async function upsertEventsBatch(events, clientOverride = null) {
  * @returns {Promise<Array<Object>>}
  */
 async function getEventsInWindow(startDate, endDate, clientOverride = null) {
-  const client = clientOverride || pool;
+  const client = clientOverride || getPool();
   try {
     const res = await client.query(
       `
@@ -135,7 +140,7 @@ async function getEventsInWindowBatch(
   batchSize = CALENDAR_FEED.BATCH_SIZE,
   clientOverride = null
 ) {
-  const client = clientOverride || pool;
+  const client = clientOverride || getPool();
   const safeBatchSize = Math.max(1, Math.min(Number.parseInt(batchSize, 10) || CALENDAR_FEED.BATCH_SIZE, 5000));
   const values = [startDate, endDate];
   let cursorClause = '';
@@ -180,7 +185,7 @@ async function getEventsInWindowBatch(
  * filtered count. raw_metadata is intentionally excluded.
  */
 async function listEvents({ from, to, category = null, search = null, cursor = null, limit }, clientOverride = null) {
-  const client = clientOverride || pool;
+  const client = clientOverride || getPool();
   const values = [from, to];
   const filters = ['release_date >= $1', 'release_date < $2'];
 
@@ -232,9 +237,73 @@ async function listEvents({ from, to, category = null, search = null, cursor = n
   }
 }
 
+/**
+ * Selects exactly one event for Roulette without sorting the whole table.
+ * Random mode uses a bounded count plus indexed OFFSET; fresh mode uses the
+ * release-date index and returns the newest/next matching event.
+ */
+async function rouletteEvent({ from, to, category = null, mode = 'random', exclude = [] }, clientOverride = null) {
+  const client = clientOverride || getPool();
+  const values = [from, to];
+  const filters = ['release_date >= $1', 'release_date < $2'];
+
+  if (category) {
+    values.push(category);
+    filters.push(`category = $${values.length}`);
+  }
+  if (exclude.length) {
+    values.push(exclude);
+    filters.push(`id <> ALL($${values.length}::varchar[])`);
+  }
+
+  const where = filters.join(' AND ');
+  try {
+    if (mode === 'fresh') {
+      const result = await client.query({
+        text: `
+          SELECT id, source, category, external_id, title, description,
+                 release_date, image_url, url
+          FROM events
+          WHERE ${where}
+          ORDER BY release_date DESC, id DESC
+          LIMIT 1;
+        `,
+        values,
+        statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+      });
+      return result.rows[0] || null;
+    }
+
+    const countResult = await client.query({
+      text: `SELECT COUNT(*)::int AS total FROM events WHERE ${where};`,
+      values,
+      statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+    });
+    const total = countResult.rows[0]?.total || 0;
+    if (!total) return null;
+
+    const result = await client.query({
+      text: `
+        SELECT id, source, category, external_id, title, description,
+               release_date, image_url, url
+        FROM events
+        WHERE ${where}
+        ORDER BY release_date ASC, id ASC
+        LIMIT 1 OFFSET $${values.length + 1};
+      `,
+      values: [...values, Math.floor(Math.random() * total)],
+      statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+    });
+    return result.rows[0] || null;
+  } catch (error) {
+    throw new DatabaseError('Failed to retrieve a roulette recommendation', error);
+  }
+}
+
 module.exports = {
   upsertEventsBatch,
   getEventsInWindow,
   getEventsInWindowBatch,
   listEvents,
+  rouletteEvent,
 };

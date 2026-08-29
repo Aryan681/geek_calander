@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import gsap from "gsap";
 import { CalendarGrid } from "./CalendarGrid";
 import { EmptyState, ErrorState, LoadingState } from "../feedback/States";
+import { calendarDateKey } from "../../lib/dates";
 export function Calendar({
   date,
   setDate,
@@ -29,8 +30,8 @@ export function Calendar({
   const index = useMemo(
     () =>
       events.reduce((map, event) => {
-        const key = event.releaseDate.slice(0, 10);
-        map.set(key, [...(map.get(key) || []), event]);
+        const key = calendarDateKey(event.releaseDate);
+        if (key) map.set(key, [...(map.get(key) || []), event]);
         return map;
       }, new Map()),
     [events],

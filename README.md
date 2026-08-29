@@ -1,6 +1,6 @@
 # Geek Calendar
 
-Geek Calendar is a backend service and dynamic iCalendar feed aggregator for geek culture releases. It collects upcoming anime episode broadcasts, movie releases, and video game launches across multiple upstream providers, normalizes the dates and metadata, stores them in PostgreSQL as the single source of truth, and dynamically exposes an RFC 5545 `.ics` feed consumed directly by calendar applications like Google Calendar, Apple Calendar, and Outlook.
+ Geek Calendar is a backend service and dynamic iCalendar feed aggregator for geek culture releases. It collects upcoming anime episode broadcasts, movie releases, video game launches, manga chapter publications, and comic issue releases across multiple upstream providers, normalizes the dates and metadata, stores them in PostgreSQL as the single source of truth, and dynamically exposes an RFC 5545 `.ics` feed consumed directly by calendar applications like Google Calendar, Apple Calendar, and Outlook.
 
 ---
 
@@ -33,6 +33,17 @@ Geek Calendar is a backend service and dynamic iCalendar feed aggregator for gee
    - Ingests upcoming video game releases across PC and consoles.
    - Aggregates multiple platform releases on the same date into a unified calendar event with platform tags (e.g., `[Game] Title (PC, PS5)`).
    - Resolves Twitch client credentials with in-memory token caching.
+
+4. **Grand Comics Database (GCD) API**
+   - Public, paginated weekly on-sale issue feed; no account or credential is required.
+   - Uses GCD's explicit `on_sale_date`, meaning the date the issue is recorded as on sale, not a guessed cover date or recurring schedule.
+   - GCD's volunteer-maintained catalog has demonstrated coverage for Marvel, DC, Image, Dark Horse, IDW, Boom!, Dynamite, Archie and other publishers, but coverage is dependent on volunteer indexing and is primarily North American/English-language for current weekly releases.
+   - Data is used with attribution under GCD's CC BY-SA 4.0 license. The API is experimental and its field shape may change.
+
+5. **MangaDex API**
+   - Public, paginated chapter API; uses the explicit `publishAt` timestamp for chapters published on MangaDex.
+   - This represents a MangaDex publication/upload event (often a translated release), not an official publisher schedule. Series start dates and guessed schedules are never ingested.
+   - MangaDex requires attribution under its API acceptable-use policy; the provider URL is retained on each event.
 
 ---
 
@@ -132,6 +143,8 @@ Configure the required variables:
 | `IGDB_CLIENT_SECRET` | For Sync | Twitch Developer Client Secret |
 
 > **Note**: AniList uses a public GraphQL endpoint and does not require an API key.
+
+GCD also requires no credential. Its optional `GCD_API_BASE_URL` override defaults to `https://www.comics.org/api`.
 
 ---
 

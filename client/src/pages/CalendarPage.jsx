@@ -32,6 +32,8 @@ export function CalendarPage() {
           anime: 0,
           movie: 0,
           game: 0,
+          manga: 0,
+          comic: 0,
         }),
       [events],
     );
@@ -68,6 +70,12 @@ export function CalendarPage() {
             </span>
             <span>
               <b className="game-text">{counts.game}</b> games
+            </span>
+            <span>
+              <b className="manga-text">{counts.manga}</b> manga
+            </span>
+            <span>
+              <b className="comic-text">{counts.comic}</b> comics
             </span>
           </div>
         </section>

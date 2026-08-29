@@ -1,7 +1,7 @@
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { mapEvent } = require('./events.service');
 
-const CATEGORIES = new Set(['all', 'anime', 'movie', 'game']);
+const CATEGORIES = new Set(['all', 'anime', 'manga', 'comic', 'movie', 'game']);
 const WINDOWS = new Set(['recent', 'week', 'month']);
 const MODES = new Set(['random', 'fresh']);
 const MAX_EXCLUDE = 50;

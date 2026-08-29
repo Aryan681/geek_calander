@@ -52,7 +52,7 @@ describe('Geek Roulette service', () => {
 
   it('rejects invalid and oversized choices', async () => {
     for (const query of [
-      { category: 'manga' }, { window: 'year' }, { mode: 'popular' },
+      { category: 'unknown' }, { window: 'year' }, { mode: 'popular' },
       { exclude: 'bad id' }, { exclude: Array.from({ length: 51 }, (_, i) => `game:${i}`).join(',') },
     ]) await assert.rejects(() => getRoulette(query, { rouletteEvent: async () => row() }), ValidationError);
   });

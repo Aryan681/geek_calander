@@ -50,7 +50,7 @@ export function Calendar({
     <>
       <section className="toolbar">
         <div className="filters" role="group" aria-label="Filter by category">
-          {["all", "anime", "movie", "game"].map((c) => (
+          {["all", "anime", "movie", "game", "manga", "comic"].map((c) => (
             <button
               key={c}
               className={category === c ? "active" : ""}
@@ -58,7 +58,7 @@ export function Calendar({
             >
               {c === "all"
                 ? "All releases"
-                : c[0].toUpperCase() + c.slice(1) + (c === "movie" ? "s" : "")}
+                : c[0].toUpperCase() + c.slice(1) + (c === "movie" || c === "comic" ? "s" : "")}
             </button>
           ))}
         </div>

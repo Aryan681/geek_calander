@@ -41,6 +41,10 @@ describe('Events JSON API service', () => {
     assert.equal(observedLimit, 250);
     await listEvents({ from: '2026-08-01', to: '2026-09-01', limit: '500', category: 'anime' }, repo);
     assert.equal(observedLimit, 500);
+    for (const category of ['manga', 'comic']) {
+      await listEvents({ from: '2026-08-01', to: '2026-09-01', category }, repo);
+      assert.equal(observedLimit, 250);
+    }
     for (const query of [
       { category: 'invalid' }, { from: 'bad', to: '2026-09-01' },
       { from: '2026-08-01', to: 'bad' }, { from: '2026-09-01', to: '2026-08-01' },

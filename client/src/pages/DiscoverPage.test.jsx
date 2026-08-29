@@ -9,6 +9,7 @@ vi.mock("../lib/api", () => ({ fetchEvents: vi.fn(), fetchTrending: vi.fn() }));
 vi.mock("../components/events/EventDrawer", () => ({ EventDrawer: ({ event }) => <div role="dialog" aria-label={event.title}>{event.title}</div> }));
 
 const event = { id: "anime:1", title: "Fresh Anime", category: "anime", source: "anilist", releaseDate: "2026-08-10T00:00:00Z", imageUrl: null };
+const mangaEvent = { id: "mangadex:chapter:1", title: "Fresh Manga", category: "manga", source: "mangadex", releaseDate: "2026-08-11T00:00:00Z", imageUrl: null };
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -35,6 +36,16 @@ describe("Discover fresh releases", () => {
     fireEvent.click(screen.getByRole("button", { name: "Games" }));
     fireEvent.change(screen.getByLabelText("Fresh release window"), { target: { value: "day" } });
     await waitFor(() => expect(fetchTrending).toHaveBeenCalledWith(expect.objectContaining({ category: "game", window: "day" }), expect.anything()));
+  });
+
+  it("supports manga releases in the shared discover flow", async () => {
+    fetchEvents.mockResolvedValue({ events: [] });
+    fetchTrending.mockResolvedValue({ events: [mangaEvent] });
+    renderPage();
+    await screen.findByRole("heading", { name: /what's fresh/i });
+    fireEvent.click(screen.getByRole("button", { name: "Manga" }));
+    expect(await screen.findByRole("button", { name: /view details for fresh manga/i })).toBeVisible();
+    expect(fetchTrending).toHaveBeenCalledWith(expect.objectContaining({ category: "manga" }), expect.anything());
   });
 
   it("shows loading, empty, error, retry, and opens the shared drawer", async () => {

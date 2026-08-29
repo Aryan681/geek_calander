@@ -31,7 +31,7 @@ describe('Trending service', () => {
     assert.deepEqual(getTrendingWindow('week', 'fresh', now), { from: new Date('2026-08-03T12:00:00Z'), to: now });
     assert.deepEqual(getTrendingWindow('week', 'upcoming', now), { from: new Date('2026-08-11T00:00:00Z'), to: new Date('2026-08-18T00:00:00Z') });
     assert.deepEqual(getTrendingWindow('month', 'fresh', now), { from: new Date('2026-07-11T12:00:00Z'), to: now });
-    for (const query of [{ category: 'manga' }, { window: 'year' }, { mode: 'popular' }, { limit: '0' }, { limit: '51' }, { limit: 'x' }]) {
+    for (const query of [{ category: 'unknown' }, { window: 'year' }, { mode: 'popular' }, { limit: '0' }, { limit: '51' }, { limit: 'x' }]) {
       await assert.rejects(() => listTrending(query, { listTrending: async () => [] }), ValidationError);
     }
   });

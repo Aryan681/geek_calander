@@ -45,7 +45,7 @@ function parseLimit(value) {
 function parseCategory(category) {
   if (category === undefined || category === '') return null;
   if (!Object.values(CATEGORIES).includes(category)) {
-    throw new ValidationError('category must be one of: anime, movie, game');
+    throw new ValidationError('category must be one of: anime, manga, comic, movie, game');
   }
   return category;
 }

@@ -1,10 +1,20 @@
 const anilistProvider = require('../providers/anilist.provider');
 const tmdbProvider = require('../providers/tmdb.provider');
 const igdbProvider = require('../providers/igdb.provider');
+const mangaDexProvider = require('../providers/mangadex.provider');
+const gcdProvider = require('../providers/gcd.provider');
 const eventRepository = require('../repositories/event.repository');
 const logger = require('../utils/logger');
 const { VALID_SOURCES, VALID_CATEGORIES, validateEvent, deduplicateEvents } = require('../utils/validation');
 const { getCalendarWindow } = require('../utils/date');
+
+const defaultProviders = {
+  anilist: anilistProvider.fetchUpcomingAnime,
+  tmdb: tmdbProvider.fetchUpcomingMovies,
+  igdb: igdbProvider.fetchUpcomingGames,
+  mangadex: mangaDexProvider.fetchUpcomingManga,
+  gcd: gcdProvider.fetchUpcomingComics,
+};
 
 /**
  * Executes a sync run for a single provider in complete isolation.
@@ -27,8 +37,9 @@ async function syncProvider(name, fetchFn, repoOverride = eventRepository, fetch
 
   try {
     const rawEvents = await fetchFn(fetchOptions);
-    stats.fetched = Array.isArray(rawEvents) ? rawEvents.length : 0;
+    stats.fetched = Number.isInteger(rawEvents?.fetched) ? rawEvents.fetched : (Array.isArray(rawEvents) ? rawEvents.length : 0);
     stats.pages = Number.isInteger(rawEvents?.pages) ? rawEvents.pages : 1;
+    stats.invalid = Number.isInteger(rawEvents?.invalid) ? rawEvents.invalid : 0;
 
     const validEvents = [];
     for (const event of rawEvents || []) {
@@ -61,7 +72,7 @@ async function syncProvider(name, fetchFn, repoOverride = eventRepository, fetch
 }
 
 /**
- * Orchestrates full synchronization across all providers (AniList, TMDB, IGDB).
+ * Orchestrates full synchronization across all providers.
  * 
  * @param {Object} [options]
  * @param {Object} [options.providers] - Custom provider overrides for testing
@@ -69,22 +80,21 @@ async function syncProvider(name, fetchFn, repoOverride = eventRepository, fetch
  * @returns {Promise<{ success: boolean, results: Object[], failedProviders: string[] }>}
  */
 async function runSync({
-  providers = {
-    anilist: anilistProvider.fetchUpcomingAnime,
-    tmdb: tmdbProvider.fetchUpcomingMovies,
-    igdb: igdbProvider.fetchUpcomingGames,
-  },
+  providers = defaultProviders,
   repository = eventRepository,
 } = {}) {
   logger.info('[SYNC] Starting ingestion run...');
   const calendarWindow = getCalendarWindow();
   logger.info(`[SYNC] window=${calendarWindow.startDate.toISOString()} -> ${calendarWindow.endDate.toISOString()}`);
 
+  const configuredProviders = { ...defaultProviders, ...providers };
   const providerConfigs = [
-    { name: 'ANILIST', fn: providers.anilist },
-    { name: 'TMDB', fn: providers.tmdb },
-    { name: 'IGDB', fn: providers.igdb },
-  ];
+    { key: 'anilist', name: 'ANILIST', fn: configuredProviders.anilist },
+    { key: 'tmdb', name: 'TMDB', fn: configuredProviders.tmdb },
+    { key: 'igdb', name: 'IGDB', fn: configuredProviders.igdb },
+    { key: 'mangadex', name: 'MANGA', fn: configuredProviders.mangadex },
+    { key: 'gcd', name: 'COMIC', fn: configuredProviders.gcd },
+  ].filter((provider) => providers === defaultProviders || Object.prototype.hasOwnProperty.call(providers, provider.key));
 
   // Providers are independent external systems. Run them concurrently so a
   // slow or paginated provider does not hold the other two behind it.

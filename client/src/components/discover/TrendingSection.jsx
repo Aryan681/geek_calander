@@ -17,7 +17,7 @@ export function TrendingSection({ category, setCategory, mode, setMode, window, 
       <div className="trending-heading"><div><p className="eyebrow">/ live release radar</p><h2 id="fresh-heading">What&apos;s Fresh</h2><p className="lede">Real releases, ranked by release date.</p></div></div>
       <div className="trending-toolbar">
         <div className="discover-tabs" role="group" aria-label="Filter fresh releases by category">
-          {[['all', 'All'], ['anime', 'Anime'], ['movie', 'Movies'], ['game', 'Games']].map(([value, label]) => <button key={value} className={category === value ? "active" : ""} aria-pressed={category === value} onClick={() => setCategory(value)}>{label}</button>)}
+          {[['all', 'All'], ['anime', 'Anime'], ['movie', 'Movies'], ['game', 'Games'], ['manga', 'Manga'], ['comic', 'Comics']].map(([value, label]) => <button key={value} className={category === value ? "active" : ""} aria-pressed={category === value} onClick={() => setCategory(value)}>{label}</button>)}
         </div>
         <div className="discover-tabs" role="group" aria-label="Choose fresh release view">
           <button className={mode === "fresh" && window === "week" ? "active" : ""} aria-pressed={mode === "fresh" && window === "week"} onClick={() => { setMode("fresh"); setWindow("week"); }}>New Releases</button>

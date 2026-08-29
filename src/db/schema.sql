@@ -5,10 +5,10 @@ CREATE TABLE IF NOT EXISTS events (
     id VARCHAR(128) PRIMARY KEY,
 
     -- Source data provider
-    source VARCHAR(32) NOT NULL CHECK (source IN ('anilist', 'tmdb', 'igdb')),
+    source VARCHAR(32) NOT NULL CHECK (source IN ('anilist', 'mangadex', 'gcd', 'tmdb', 'igdb')),
 
     -- Media / release category
-    category VARCHAR(32) NOT NULL CHECK (category IN ('anime', 'manga', 'movie', 'game')),
+    category VARCHAR(32) NOT NULL CHECK (category IN ('anime', 'manga', 'comic', 'movie', 'game')),
 
     -- Native identifier from the upstream provider
     external_id VARCHAR(128) NOT NULL,
@@ -47,3 +47,9 @@ CREATE INDEX IF NOT EXISTS idx_events_release_date ON events (release_date ASC);
 
 -- Supports deterministic keyset pagination for the calendar feed.
 CREATE INDEX IF NOT EXISTS idx_events_calendar_release_id ON events (release_date ASC, id ASC);
+
+-- Keep existing installations in sync with the expanded provider/category set.
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_source_check;
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_category_check;
+ALTER TABLE events ADD CONSTRAINT events_source_check CHECK (source IN ('anilist', 'mangadex', 'gcd', 'tmdb', 'igdb'));
+ALTER TABLE events ADD CONSTRAINT events_category_check CHECK (category IN ('anime', 'manga', 'comic', 'movie', 'game'));

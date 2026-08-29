@@ -8,6 +8,8 @@
   --anime: #f28a6b;
   --movie: #79b8ff;
   --game: #b6df72;
+  --manga: #d49cff;
+  --comic: #ffcf70;
 }
 * {
   box-sizing: border-box;
@@ -163,6 +165,8 @@ nav a:hover {
 .game-text {
   color: var(--game) !important;
 }
+.manga-text { color: var(--manga) !important; }
+.comic-text { color: var(--comic) !important; }
 .toolbar {
   border-top: 1px solid #292c31;
   border-bottom: 1px solid #292c31;

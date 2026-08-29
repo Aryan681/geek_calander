@@ -23,14 +23,14 @@ function normalizeEvent(raw) {
 
   if (!title || !releaseDate || Number.isNaN(Date.parse(releaseDate)))
     return null;
-  if (!["anime", "movie", "game"].includes(category)) return null;
+  if (!["anime", "movie", "game", "manga", "comic"].includes(category)) return null;
 
   return {
     id: String(event.id ?? ""),
     source: String(event.source ?? "unknown"),
     category,
     externalId: String(event.externalId ?? ""),
-    title: title.replace(/^\[(anime|movie|game)\]\s*/i, ""),
+    title: title.replace(/^\[(anime|movie|game|manga|comic)\]\s*/i, ""),
     releaseDate,
     description:
       typeof event.description === "string" ? event.description : undefined,

@@ -42,6 +42,12 @@ function validateEnv() {
       clientId: process.env.IGDB_CLIENT_ID || '',
       clientSecret: process.env.IGDB_CLIENT_SECRET || '',
     },
+    gcd: {
+      baseUrl: process.env.GCD_API_BASE_URL || 'https://www.comics.org/api',
+    },
+    mangaDex: {
+      baseUrl: process.env.MANGADEX_API_BASE_URL || 'https://api.mangadex.org',
+    },
   };
 }
 

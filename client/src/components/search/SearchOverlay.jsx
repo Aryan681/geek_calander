@@ -40,7 +40,7 @@ export function SearchOverlay({ open, close, onSelect }) {
             autoFocus
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search anime, films, games…"
+            placeholder="Search anime, films, games, manga, comics…"
             aria-label="Search events"
           />
           <kbd>ESC</kbd>

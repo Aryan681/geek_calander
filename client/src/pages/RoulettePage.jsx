@@ -76,7 +76,7 @@ export function RoulettePage() {
           <div>
             <span className="control-label">Category</span>
             <div className="roulette-options" role="group" aria-label="Choose a category">
-              {[["all", "All"], ["anime", "Anime"], ["movie", "Movies"], ["game", "Games"]].map(([value, label]) => (
+              {[["all", "All"], ["anime", "Anime"], ["movie", "Movies"], ["game", "Games"], ["manga", "Manga"], ["comic", "Comics"]].map(([value, label]) => (
                 <button key={value} className={category === value ? "active" : ""} onClick={() => setCategory(value)} aria-pressed={category === value}>{label}</button>
               ))}
             </div>

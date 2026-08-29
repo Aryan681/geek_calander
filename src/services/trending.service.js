@@ -1,7 +1,7 @@
 const { ValidationError } = require('../utils/errors');
 const { mapEvent } = require('./events.service');
 
-const CATEGORIES = new Set(['all', 'anime', 'movie', 'game']);
+const CATEGORIES = new Set(['all', 'anime', 'manga', 'comic', 'movie', 'game']);
 const WINDOWS = new Set(['day', 'week', 'month']);
 const MODES = new Set(['fresh', 'upcoming']);
 const DEFAULT_LIMIT = 20;

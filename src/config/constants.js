@@ -1,5 +1,7 @@
 const SOURCES = Object.freeze({
   ANILIST: 'anilist',
+  MANGADEX: 'mangadex',
+  GCD: 'gcd',
   TMDB: 'tmdb',
   IGDB: 'igdb',
 });
@@ -7,12 +9,15 @@ const SOURCES = Object.freeze({
 const CATEGORIES = Object.freeze({
   ANIME: 'anime',
   MANGA: 'manga',
+  COMIC: 'comic',
   MOVIE: 'movie',
   GAME: 'game',
 });
 
 const SOURCE_DISPLAY_NAMES = Object.freeze({
   [SOURCES.ANILIST]: 'AniList',
+  [SOURCES.MANGADEX]: 'MangaDex',
+  [SOURCES.GCD]: 'Grand Comics Database',
   [SOURCES.TMDB]: 'TMDB',
   [SOURCES.IGDB]: 'IGDB',
 });

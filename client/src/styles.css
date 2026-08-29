@@ -698,6 +698,29 @@ nav a:hover {
 .discover-list small {
   color: #89909a;
 }
+.trending-section {
+  border-top: 1px solid #292c31;
+  margin-top: 54px;
+  padding-top: 28px;
+}
+.trending-heading h2 { font-size: 28px; font-weight: 500; letter-spacing: -.04em; margin: 0; }
+.trending-heading .lede { margin: 8px 0 0; font-size: 13px; }
+.trending-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 18px; flex-wrap: wrap; margin: 28px 0 18px; }
+.discover-tabs { display: flex; gap: 6px; overflow: auto; }
+.discover-tabs button, .discover-tabs select { border: 1px solid #2b2f35; background: #111317; color: #aeb4bc; padding: 9px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.discover-tabs button.active { background: #20242a; color: #f3f4f5; }
+.trending-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.event-card { min-width: 0; padding: 0; border: 1px solid #292c31; background: #111317; color: #e8e9eb; text-align: left; cursor: pointer; }
+.event-card:hover { border-color: #59616b; }
+.event-card img, .event-card-empty { display: flex; width: 100%; height: 190px; object-fit: cover; background: #20242a; align-items: center; justify-content: center; color: #d9f36a; }
+.event-card-body { display: flex; flex-direction: column; gap: 8px; padding: 14px; }
+.event-card-body b { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-card-body small { color: #89909a; font: 10px monospace; }
+.discover-state { min-height: 180px; border: 1px solid #292c31; color: #858c96; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+.discover-state svg { color: #d9f36a; }
+.discover-state p { margin: 0; }
+.trending-loading { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.trending-loading span { display: block; height: 255px; background: #111317; border: 1px solid #292c31; animation: blink 1.2s infinite alternate; }
 @media (max-width: 700px) {
   .mobile-menu-panel {
     display: flex;
@@ -727,6 +750,11 @@ nav a:hover {
   .discover-list small {
     grid-column: 2;
   }
+  .trending-grid, .trending-loading { grid-template-columns: 1fr 1fr; }
+  .event-card img, .event-card-empty { height: 145px; }
+}
+@media (max-width: 430px) {
+  .trending-grid, .trending-loading { grid-template-columns: 1fr; }
 }
 .day-list h2 {
   margin-bottom: 28px;

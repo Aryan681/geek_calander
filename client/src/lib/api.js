@@ -116,3 +116,19 @@ export async function fetchRoulette({ category = "all", window = "month", mode =
   if (!event) throw new ApiError(200, "Roulette returned an invalid event");
   return { event };
 }
+
+export async function fetchTrending({ category = "all", window = "week", mode = "fresh", limit = 20 } = {}, signal) {
+  const params = new URLSearchParams({ category, window, mode, limit: String(Math.min(limit, 50)) });
+  const response = await fetch(`${API_BASE_URL}/trending?${params}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok)
+    throw new ApiError(response.status, `Trending service returned ${response.status}`);
+  const payload = await response.json();
+  const events = Array.isArray(payload?.events)
+    ? [...new Map(payload.events.map(normalizeEvent).filter((event) => event?.id).map((event) => [event.id, event])).values()]
+    : null;
+  if (!events) throw new ApiError(200, "Trending returned an invalid response");
+  return { events, window: payload.window, category: payload.category };
+}

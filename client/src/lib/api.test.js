@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchEvents, fetchRoulette, ApiError } from "./api";
+import { fetchEvents, fetchRoulette, fetchTrending, ApiError } from "./api";
 afterEach(() => vi.restoreAllMocks());
 describe("event adapter", () => {
   it("requests a bounded window and normalizes valid records", async () => {
@@ -95,5 +95,20 @@ describe("event adapter", () => {
     await expect(fetchRoulette({}, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ event: {} }) });
     await expect(fetchRoulette()).rejects.toBeInstanceOf(ApiError);
+  });
+  it("fetches a bounded, normalized trending list and supports cancellation", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ window: "week", category: "all", events: [
+        { id: "game:1", title: "Fresh", category: "game", releaseDate: "2026-08-01" },
+        { id: "game:1", title: "Duplicate", category: "game", releaseDate: "2026-08-01" },
+      ] }),
+    });
+    const result = await fetchTrending({ category: "game", window: "week", limit: 100 });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("limit=50"), expect.anything());
+    expect(result.events).toHaveLength(1);
+    const controller = new AbortController();
+    global.fetch = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    await expect(fetchTrending({}, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
   });
 });

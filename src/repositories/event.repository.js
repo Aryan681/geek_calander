@@ -300,10 +300,47 @@ async function rouletteEvent({ from, to, category = null, mode = 'random', exclu
   }
 }
 
+/**
+ * Lists a bounded, deterministic freshness feed. Ranking intentionally uses
+ * only release_date, the normalized trustworthy signal available in events.
+ * raw_metadata is never selected.
+ */
+async function listTrending({ from, to, category = null, mode = 'fresh', limit = 20 }, clientOverride = null) {
+  const client = clientOverride || getPool();
+  const values = [from, to];
+  const filters = ['release_date >= $1', 'release_date < $2'];
+  if (category) {
+    values.push(category);
+    filters.push(`category = $${values.length}`);
+  }
+  const order = mode === 'upcoming'
+    ? 'release_date ASC, id ASC'
+    : 'release_date DESC, id DESC';
+  values.push(limit);
+  try {
+    const result = await client.query({
+      text: `
+        SELECT id, source, category, external_id, title, description,
+               release_date, image_url, url
+        FROM events
+        WHERE ${filters.join(' AND ')}
+        ORDER BY ${order}
+        LIMIT $${values.length};
+      `,
+      values,
+      statement_timeout: CALENDAR_FEED.QUERY_TIMEOUT_MS,
+    });
+    return result.rows;
+  } catch (error) {
+    throw new DatabaseError('Failed to retrieve trending releases', error);
+  }
+}
+
 module.exports = {
   upsertEventsBatch,
   getEventsInWindow,
   getEventsInWindowBatch,
   listEvents,
   rouletteEvent,
+  listTrending,
 };
